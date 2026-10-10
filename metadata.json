@@ -1,0 +1,19 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "qssn70"
+            }
+        ],
+        "Category": "Multimedia",
+        "Description": "KDE Plasma 6 panel lyrics directly from the SPlayer-Next local API",
+        "Icon": "view-media-lyrics",
+        "Id": "org.mhpsy.splayernext.lyrics",
+        "License": "MIT",
+        "Name": "SPlayer-Next Lyrics",
+        "Version": "1.1.2",
+        "Website": "https://github.com/qssn70/splayer-next-plasma-lyrics"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "KPackageStructure": "Plasma/Applet"
+}

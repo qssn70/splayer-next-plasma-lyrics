@@ -14,6 +14,7 @@ This is an independently packaged widget ID (`org.mhpsy.splayernext.lyrics`), so
 
 **Credit**: original widget by mhpsy, adaptation for SPlayer-Next. MIT per original repository's README.
 
+
 ## Plasma 6 package metadata fix (v1.1.2)
 
 Adds the mandatory top-level `KPackageStructure: Plasma/Applet` metadata field and removes the obsolete `X-Plasma-MainScript` key. The old v1.1.0/v1.1.1 package lacked this field, so `kpackagetool6 -u` could not recognize the existing installation. Run `bash install.sh` from this source tree to repair only this widget's installed metadata and upgrade in place, preserving your Plasma widget configuration.
