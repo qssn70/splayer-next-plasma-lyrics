@@ -12,7 +12,7 @@ MouseArea {
     property string karaokeMarkup: ""
     property bool isPlaying: false
     property bool apiConnected: false
-    property string idleText: "♪ SPlayer-Next Lyrics"
+    property string idleText: "♪ Music Lyrics"
     property int fontSize: 13
     property string fontFamily: ""
     property bool fontBold: false

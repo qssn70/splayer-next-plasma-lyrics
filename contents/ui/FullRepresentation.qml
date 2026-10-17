@@ -88,7 +88,7 @@ ColumnLayout {
 
     Label {
         visible: !apiConnected
-        text: "⚠ 请在 SPlayer-Next 中开启外部 HTTP API"
+        text: "⚠ 请在当前播放器中开启本地 HTTP API"
         color: Kirigami.Theme.negativeTextColor
         horizontalAlignment: Text.AlignHCenter
         Layout.fillWidth: true

@@ -4,12 +4,16 @@ import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.kirigami as Kirigami
 import "Lyrics.js" as Lyrics
+import "LxLyrics.js" as LxLyrics
 
-// SPlayer-Next's public API is the only lyrics source. No LRCLIB or MPRIS lookups.
+// Local playback API lyrics only: SPlayer-Next or LX Music. No LRCLIB / MPRIS.
 PlasmoidItem {
     id: root
 
+    readonly property string playerSource: plasmoid.configuration.playerSource
     readonly property int apiPort: plasmoid.configuration.apiPort
+    readonly property int lxApiPort: plasmoid.configuration.lxApiPort
+    readonly property int currentApiPort: playerSource === "lx" ? lxApiPort : apiPort
     readonly property bool useWebSocket: plasmoid.configuration.useWebSocket
     readonly property string lyricMode: plasmoid.configuration.lyricMode
     readonly property bool showRomanInPopup: plasmoid.configuration.showRomanInPopup
@@ -32,6 +36,7 @@ PlasmoidItem {
     property string songTitle: ""
     property string songArtist: ""
     property string coverUrl: ""
+    property string lxLiveLyric: ""
     property var lyricLines: []
     property int currentLineIndex: -1
     property real currentTimeMs: 0
@@ -52,7 +57,8 @@ PlasmoidItem {
     property bool wsReconnectSuspended: false
 
     readonly property string currentLyric: currentLineIndex >= 0
-        ? Lyrics.displayText(lyricLines[currentLineIndex], lyricMode) : ""
+        ? Lyrics.displayText(lyricLines[currentLineIndex], lyricMode)
+        : (playerSource === "lx" && lyricLines.length === 0 ? lxLiveLyric : "")
     readonly property string karaokeMarkup: currentLineIndex >= 0
         ? Lyrics.karaokeMarkup(lyricLines[currentLineIndex],
             currentTimeMs + lyricOffsetMs, lyricMode,
@@ -110,7 +116,7 @@ PlasmoidItem {
 
     // Complete each request once. QML's XMLHttpRequest works directly from a plasmoid.
     // Using only the loopback host prevents remote hosts from receiving song metadata.
-    function httpJson(method, path, payload, callback) {
+    function httpJson(method, path, payload, callback, asText) {
         var request = new XMLHttpRequest()
         var complete = false
         function finish(ok, response) {
@@ -124,12 +130,16 @@ PlasmoidItem {
                 finish(false, null)
                 return
             }
-            try { finish(true, JSON.parse(request.responseText)) }
-            catch (error) { finish(false, null) }
+            if (asText) {
+                finish(true, request.responseText)
+            } else {
+                try { finish(true, JSON.parse(request.responseText)) }
+                catch (error) { finish(false, null) }
+            }
         }
         request.onerror = function() { finish(false, null) }
         try {
-            request.open(method, "http://127.0.0.1:" + apiPort + path, true)
+            request.open(method, "http://127.0.0.1:" + currentApiPort + path, true)
             if (method !== "GET") request.setRequestHeader("Content-Type", "application/json")
             request.send(method === "GET" ? null : JSON.stringify(payload || {}))
         } catch (error) {
@@ -149,6 +159,7 @@ PlasmoidItem {
         songTitle = ""
         songArtist = ""
         coverUrl = ""
+        lxLiveLyric = ""
         lyricLines = []
         currentLineIndex = -1
         currentTimeMs = 0
@@ -167,6 +178,7 @@ PlasmoidItem {
         if (changed) {
             trackId = nextId
             lyricLines = []
+            lxLiveLyric = ""
             currentLineIndex = -1
             lyricRequestSerial++
             lyricRequestPending = false
@@ -203,21 +215,58 @@ PlasmoidItem {
         currentLineIndex = Lyrics.currentIndex(lyricLines, currentTimeMs + lyricOffsetMs)
     }
 
+    function applyLxStatus(snapshot) {
+        // LX Music Open API: progress/duration are seconds, not milliseconds.
+        var name = typeof snapshot.name === "string" ? snapshot.name : ""
+        var singer = typeof snapshot.singer === "string" ? snapshot.singer : ""
+        var album = typeof snapshot.albumName === "string" ? snapshot.albumName : ""
+        var seconds = Math.max(0, numeric(snapshot.duration, 0))
+        var track = null
+        if (name) {
+            track = {
+                id: "lx:" + JSON.stringify([name, singer, album, Math.round(seconds * 1000)]),
+                title: name,
+                artists: singer ? [{name: singer}] : [],
+                cover: snapshot.picUrl || "",
+                duration: seconds * 1000
+            }
+        }
+        var changed = applyTrack(track)
+        lxLiveLyric = typeof snapshot.lyricLineText === "string"
+            ? snapshot.lyricLineText.replace(/\s+/g, " ").trim() : ""
+        lyricOffsetMs = 0  // LRC [offset] is already included by LxLyrics.js
+        setClock(numeric(snapshot.progress, 0) * 1000,
+                 snapshot.status === "playing",
+                 numeric(snapshot.playbackRate, 1), Date.now())
+        return changed
+    }
+
     function pollState(force) {
         if (stateRequestPending && Date.now() - stateRequestStarted < 3000) return
         stateRequestPending = true
         stateRequestStarted = Date.now()
         var serial = ++stateRequestSerial
         var generation = apiGeneration
-        httpJson("GET", "/api/now-playing", null, function(ok, snapshot) {
+        var lx = playerSource === "lx"
+        var endpoint = lx
+            ? "/status?filter=status,name,singer,albumName,duration,progress,playbackRate,picUrl,lyricLineText"
+            : "/api/now-playing"
+        httpJson("GET", endpoint, null, function(ok, snapshot) {
             if (serial !== stateRequestSerial || generation !== apiGeneration) return
             stateRequestPending = false
-            if (!ok || !snapshot || typeof snapshot !== "object") {
+            if (!ok || !snapshot || typeof snapshot !== "object"
+                    || (lx && typeof snapshot.status !== "string")) {
                 apiConnected = false
                 isPlaying = false
                 return
             }
             apiConnected = true
+            if (lx) {
+                var lxChanged = applyLxStatus(snapshot)
+                if (trackId && (lxChanged || (!lyricLines.length &&
+                        Date.now() - lastLyricAttempt > 12000))) fetchLyrics()
+                return
+            }
             var changed = applyTrack(snapshot.track || null)
             lyricOffsetMs = numeric(snapshot.lyricOffsetMs, 0)
             setClock(snapshot.position, snapshot.playing, snapshot.speed, snapshot.sendTimestamp)
@@ -241,6 +290,28 @@ PlasmoidItem {
         lastLyricAttempt = Date.now()
         lyricRequestPending = true
         lyricRequestStarted = Date.now()
+        if (playerSource === "lx") {
+            // LX /lyric-all serves the player's own LRC, translation, romanization,
+            // and optional lxlyric karaoke data. Fallback to /lyric plain text.
+            httpJson("GET", "/lyric-all", null, function(ok, reply) {
+                if (serial !== lyricRequestSerial || generation !== apiGeneration) return
+                if (!ok || !reply || typeof reply !== "object") {
+                    httpJson("GET", "/lyric", null, function(lrcOk, lrcText) {
+                        if (serial !== lyricRequestSerial || generation !== apiGeneration) return
+                        lyricRequestPending = false
+                        if (!lrcOk || trackId !== wantedId) return
+                        lyricLines = Lyrics.normalizeLines(LxLyrics.fromApi({lyric: lrcText}))
+                        advanceClock()
+                    }, true)
+                    return
+                }
+                lyricRequestPending = false
+                if (trackId !== wantedId) return
+                lyricLines = Lyrics.normalizeLines(LxLyrics.fromApi(reply))
+                advanceClock()
+            })
+            return
+        }
         httpJson("GET", "/api/lyrics", null, function(ok, reply) {
             if (serial !== lyricRequestSerial || generation !== apiGeneration) return
             lyricRequestPending = false
@@ -255,6 +326,7 @@ PlasmoidItem {
     }
 
     function onSocketMessage(message) {
+        if (playerSource !== "splayer") return
         var event
         try { event = JSON.parse(message) } catch (error) { return }
         if (!event || event.kind !== "event") return
@@ -291,7 +363,24 @@ PlasmoidItem {
         var op = command === "toggle" ? (isPlaying ? "pause" : "play") : command
         if (["play", "pause", "prev", "next", "stop", "seek"].indexOf(op) === -1) return
         var payload = op === "seek" ? {positionMs: Math.max(0, Math.round(positionMs))} : {}
+        var controlGeneration = apiGeneration
+        if (playerSource === "lx") {
+            var paths = {play: "/play", pause: "/pause",
+                         prev: "/skip-prev", next: "/skip-next"}
+            var path = op === "seek"
+                ? "/seek?offset=" + encodeURIComponent((payload.positionMs / 1000).toFixed(3))
+                : paths[op]
+            if (!path) return
+            httpJson("GET", path, null, function(ok) {
+                if (!ok || controlGeneration !== apiGeneration || playerSource !== "lx") return
+                if (op === "seek") setClock(payload.positionMs, isPlaying, speed, Date.now())
+                else if (op === "play" || op === "pause") isPlaying = op === "play"
+                resyncTimer.restart()
+            }, true)
+            return
+        }
         httpJson("POST", "/api/" + op, payload, function(ok, response) {
+            if (controlGeneration !== apiGeneration || playerSource !== "splayer") return
             if (ok && response && response.ok) {
                 if (op === "seek") setClock(payload.positionMs, isPlaying, speed, Date.now())
                 else if (op === "play" || op === "pause") isPlaying = op === "play"
@@ -313,7 +402,9 @@ PlasmoidItem {
     }
 
     onApiConnectedChanged: { if (!apiConnected) expanded = false }
-    onApiPortChanged: { if (initialized) resetConnection() }
+    onPlayerSourceChanged: { if (initialized) resetConnection() }
+    onApiPortChanged: { if (initialized && playerSource === "splayer") resetConnection() }
+    onLxApiPortChanged: { if (initialized && playerSource === "lx") resetConnection() }
     onLyricModeChanged: { if (initialized) advanceClock() }
     Component.onCompleted: initialized = true
 
@@ -361,7 +452,7 @@ PlasmoidItem {
     WebSocket {
         id: ws
         url: "ws://127.0.0.1:" + root.apiPort + "/ws"
-        active: root.useWebSocket && !root.wsReconnectSuspended
+        active: root.playerSource === "splayer" && root.useWebSocket && !root.wsReconnectSuspended
         onStatusChanged: {
             if (status === WebSocket.Open) {
                 root.wsConnected = true
@@ -369,7 +460,7 @@ PlasmoidItem {
                 root.fetchLyrics(true)
             } else if (status === WebSocket.Error || status === WebSocket.Closed) {
                 root.wsConnected = false
-                if (root.useWebSocket && !root.wsReconnectSuspended) {
+                if (root.playerSource === "splayer" && root.useWebSocket && !root.wsReconnectSuspended) {
                     root.wsReconnectSuspended = true
                     reconnectTimer.restart()
                 }

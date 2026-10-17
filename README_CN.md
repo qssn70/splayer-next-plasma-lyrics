@@ -1,82 +1,92 @@
-# SPlayer-Next Lyrics — KDE Plasma 6 面板歌词
+# Music Lyrics — KDE Plasma 6 任务栏歌词
 
-基于 [mhpsy/kde-splayer-lyrics](https://github.com/mhpsy/kde-splayer-lyrics) 的 KDE Plasma 6 小组件改造，针对 [SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer-Next) 当前外部 API。
+在 [mhpsy/kde-splayer-lyrics](https://github.com/mhpsy/kde-splayer-lyrics) 基础上适配的 KDE Plasma 6 歌词小组件。**同时支持 SPlayer-Next 和 LX Music（洛雪音乐）开放 API**。
 
-**歌词唯一来源：SPlayer-Next 本机 `/api/lyrics`。** 不使用 LRCLIB，不利用 MPRIS 查询歌曲名称，不向外部歌词站发送歌曲信息。SPlayer-Next 可读取本地 LRC、TTML、YRC 等歌词，组件展示播放器实际解析后的结果。
+**重要：只从播放器的本机 API 获取已加载的歌词。** 小组件不调用 LRCLIB、不通过 MPRIS 获取歌名并搜索歌词，也不向在线歌词服务发送歌曲信息。
 
-## 功能
+## 新增 LX Music（v1.2.0）
 
-- KDE 任务栏直接显示实时同步歌词；点击展开歌词列表、时间轴和上一曲/暂停/下一曲按钮
-- HTTP API 获取歌词、播放时间、偏移、歌曲信息；WebSocket 用于加快切歌及歌词更新（可关闭）
-- 支持逐字时间高亮（逐字歌词）、逐行歌词（LRC）、原文/翻译/双语/音译模式
-- 可配置字体、颜色、切换动画、宽度、端口；按中键播放/暂停
-- HTTP-only 模式，无须启用 WebSocket；播放器断线后持续尝试重连
-- **API 未连接时自动隐藏任务栏小组件且不保留空白占位**；HTTP API 恢复后自动重新显示，无需手动操作
-- 单独的组件 ID，不会覆盖原版 SPlayer Lyrics
+- 在小组件设置中选择 **播放器来源：SPlayer-Next / LX Music**；此前的用户默认保持 SPlayer-Next
+- LX Music 默认端口 `23330`，可单独设置，不影响原 SPlayer-Next 端口 `14558`
+- `GET /status` 获取歌曲名称、播放/暂停状态、进度与速度，官方单位为**秒**；组件转换为毫秒
+- `GET /lyric-all` 直接读取播放器中当前曲目的原文 `lyric`、翻译 `tlyric`、音译 `rlyric` 与逐字歌词 `lxlyric`；如果接口不可用，回退 `GET /lyric`（纯 LRC 文本）
+- 识别普通 LRC 时间标签、多时间标签、`[offset]` 和 LX 的 `<起点毫秒,时长毫秒>歌词` 逐字标签
+- LX 播放控制按其协议发起 GET，例如 `/skip-next`、`/pause`、`/seek?offset=60.000`（seek 单位为秒）
+- LX 无须 WebSocket。暂采用约 900ms 一次的状态校准请求和客户端时间插值；歌词随切歌重新加载，另每 12 秒兜底刷新
+
+## 原功能不变
+
+- 面板单行歌词、字体颜色和过渡动画、双语与罗马音、展开的多行歌词及播放进度控制
+- 可用时显示歌词，**所选播放器的 API 未连接时小组件隐藏且不占任务栏宽度，恢复连接后自动显示**
+- SPlayer-Next HTTP API 与可选 WebSocket 保持支持，支持其 LRC/TTML/YRC 等解析后的歌词与逐字时间
+- 作者为 `qssn70`，保留原作者 `mhpsy` 的 MIT 许可证和来源署名
+- 组件 ID 保持 `org.mhpsy.splayernext.lyrics`，升级不需要重新加入面板
 
 ## 系统要求
 
 - Kubuntu / KDE Plasma 6
-- SPlayer-Next，已开启「设置 → 外部 API → HTTP API」；默认端口 `14558`
-- 若需要 WebSocket 事件，另外开启「WebSocket」；如只开 HTTP，将组件配置里的 WebSocket 开关关闭
-- Qt 6 WebSockets QML 插件。Kubuntu 常见包名：`qml6-module-qtwebsockets`（不同版本略有差别）
+- SPlayer-Next（选择它时），或 LX Music Desktop 2.7.0 及以上（选择洛雪时）
+- Qt 6 WebSockets QML 插件（即使仅选择 LX Music，主 QML 仍会加载相关模块）：Kubuntu 通常是 `qml6-module-qtwebsockets`
 
-## 安装
-
-从 zip 解压后进入 `splayer-next-plasma-lyrics` 目录：
+## 安装或升级
 
 ```bash
 sudo apt install qml6-module-qtwebsockets
+git clone https://github.com/qssn70/splayer-next-plasma-lyrics.git
+cd splayer-next-plasma-lyrics
 bash install.sh
 ```
 
-或者直接从可安装的 `.plasmoid` 文件安装：
+此前已克隆该仓库：在源码目录执行 `git pull && bash install.sh` 即可更新。
 
-```bash
-kpackagetool6 -t Plasma/Applet -i splayer-next-lyrics.plasmoid
-```
+`install.sh` 会检查旧版的 `KPackageStructure` 元数据并原地升级，不删除旧面板部件或用户配置。若 Plasma 没自动刷新，可重新登录 KDE 会话。
 
-已安装同 ID 时使用 `-u` 代替 `-i`。**注意：旧的 v1.1.0/v1.1.1 曾遗漏 `KPackageStructure` 元数据，无法直接 `-u`；请使用本源码自带的 `bash install.sh` 自动修复旧版的元数据，再升级。该修复只修改本组件的 JSON 元数据，不删除 KDE 面板上的小组件，也不清除用户配置。**
+在 KDE 面板中右键 → 添加部件 → 搜索 **Music Lyrics**。右键小组件 → 配置 → **Player** 选择播放器。
 
-然后右键 KDE 任务栏 → 添加部件 → 搜索 `SPlayer-Next Lyrics` → 放入面板。
+### SPlayer-Next
 
-## 检查 API
+打开 SPlayer-Next「设置 → 外部 API」，启用 HTTP API，默认端口 `14558`。WebSocket 是可选项，启用时还需打开 WebSocket。
 
 ```bash
 curl -s http://127.0.0.1:14558/api/now-playing | python3 -m json.tool
 curl -s http://127.0.0.1:14558/api/lyrics | python3 -m json.tool
 ```
 
-第一条应返回 `track`、`position`、`sendTimestamp` 等字段，第二条应有 `lyric` 数组。播放有歌词的歌测试。若请求失败，请在播放器设置开启外部 API，确认端口一致。
+### LX Music（洛雪音乐）
 
-## 使用说明
+打开洛雪音乐桌面版「设置 → 开放 API → 启用开放 API 服务」，默认端口 `23330`；无需打开 WebSocket。确认小组件设置里选的是 **LX Music**。
 
-- **面板文字颜色**使用系统主题，卡拉 OK 逐字激活部分采用 KDE 主题强调色
-- **原文 + 翻译**在面板同一行使用 `·` 拼接，展开窗口显示多行双语
-- **音译优先**仅在 SPlayer-Next 已解析并提供 `romanLyric` 时显示，否则回退到原文
-- **封面**仅显示 QML 可访问的 HTTP(S)/file URL，SPlayer 自定义私有协议封面会显示音符占位图；歌词不受影响
-- **无网络歌词抓取**指小组件本身不进行在线歌词查找；播放器自身如何获取歌词取决于播放器设置
+```bash
+curl -s http://127.0.0.1:23330/status | python3 -m json.tool
+curl -s http://127.0.0.1:23330/lyric-all | python3 -m json.tool
+curl -s http://127.0.0.1:23330/lyric
+```
 
-## 原理
+其中 `/lyric` 返回原始 LRC 文本，不是 JSON。`/lyric-all` 会直接给出原文、翻译、音译和（有时提供）逐字歌词。若播放器当前无歌词，小组件也无法凭空显示歌词；当有歌曲但没有完整歌词时，可以退而显示播放器 `/status` 提供的 `lyricLineText`。
 
-- `GET http://127.0.0.1:14558/api/now-playing`：每 900ms 校准播放进度、歌曲身份、速度、歌词偏移
-- `GET http://127.0.0.1:14558/api/lyrics`：首次/切歌/歌词变化时加载完整 `LyricLine[]`，每 12 秒兜底刷新
-- `ws://127.0.0.1:14558/ws`（可选）：监听 `track`、`lyric`、`lyricOffset`，不依赖高频位置事件
-- 使用 `sendTimestamp`、播放速度和本机时钟，在 HTTP 查询间隔内以 65ms 更新歌词显示
+## 已知限制
 
-## Plasma 6 元数据修复（v1.1.2）
+- 不会自动在两个播放器之间切换，需要手动选择 API 来源
+- LX Music 状态目前通过 HTTP 轮询而非官方提供的 SSE 订阅接口，因此切歌检测最多可能延迟约 1 秒
+- 逐字高亮需要 `lxlyric` 或 SPlayer-Next 的逐字时间数据；普通 LRC 只支持逐行同步
+- 图片展示仅支持 QML 可访问的封面地址；私有 Electron 协议可能只显示音符占位
+- 不能在当前构建环境直接执行 Plasma 桌面联调；请在 Kubuntu 上验证实际样式与网络连接
 
-- `metadata.json` 顶层添加必需的 `"KPackageStructure": "Plasma/Applet"`。
-- 去掉 Plasma 6 已不再使用的 `X-Plasma-MainScript`。
-- `install.sh` 会先补齐旧版已安装元数据，再正常执行 `kpackagetool6 -u`。也可以手工修改旧版 `metadata.json` 后再运行 `kpackagetool6 -u`。
+## 检查与测试
 
-## 测试及已知限制
+```bash
+node tests/lyrics.test.cjs
+node tests/lx-lyrics.test.cjs
+node tests/api.test.cjs
+node tests/lx-api.test.cjs
+node tests/http.test.cjs
+python3 tests/check_structure.py
+```
 
-`node tests/lyrics.test.cjs` 测试歌词正规化、时间定位、双语及富文本转义。完整 Plasma UI 与本机播放器的联调需要在 Kubuntu Plasma 6 中进行。
+官方文档：[洛雪开放 API](https://lxmusic.toside.cn/desktop/open-api)、[LX 逐字歌词格式](https://lxmusic.toside.cn/desktop/custom-source)。
 
-## 作者与来源
+## 作者和许可
 
-本修改版组件作者：**qssn70**（组件元数据中的作者字段）。
+本修改版作者：**qssn70**。
 
-
-基于 [mhpsy/kde-splayer-lyrics](https://github.com/mhpsy/kde-splayer-lyrics)（README 标注 MIT）；其原组件外观、动画、弹出歌词和配置模式经过保留及适配。修改版的新增代码亦采用 MIT 许可。SPlayer-Next 为独立上游项目。
+原小组件项目：[mhpsy/kde-splayer-lyrics](https://github.com/mhpsy/kde-splayer-lyrics)（MIT）。保留原许可证及版权说明；SPlayer-Next、LX Music 为独立上游项目。

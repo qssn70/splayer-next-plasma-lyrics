@@ -1,20 +1,66 @@
-# SPlayer-Next Lyrics for KDE Plasma 6
+# Music Lyrics for KDE Plasma 6 — SPlayer-Next / LX Music
 
-See [中文安装与使用说明](README_CN.md).
+[中文使用说明](README_CN.md)
 
-A fork-inspired adaptation of [mhpsy/kde-splayer-lyrics](https://github.com/mhpsy/kde-splayer-lyrics) for SPlayer-Next's current HTTP/WebSocket API. The widget reads **only SPlayer-Next's locally parsed lyrics** (`/api/lyrics`), never querying LRCLIB, MPRIS song metadata, or any online lyrics service.
+A KDE Plasma 6 panel lyrics widget adapted from [mhpsy/kde-splayer-lyrics](https://github.com/mhpsy/kde-splayer-lyrics).
 
-**Install**: enable SPlayer-Next External HTTP API (default localhost:14558), optionally WebSocket, then `bash install.sh` from this directory. KDE Plasma 6, and the Qt 6 WebSockets QML module, are required.
+**No online lyric search:** the widget reads only lyrics that the selected local player already provides through its own API. It never calls LRCLIB or uses MPRIS metadata to look up lyrics.
 
-The panel widget hides completely, without reserving panel space, while the local HTTP API is unreachable, and reappears automatically when it reconnects. WebSocket is optional; HTTP connectivity controls visibility.
+## Supported local players
 
-**Author**: qssn70. Original widget credit remains with mhpsy under the MIT license.
+| Player | Default loopback port | Direct lyric API | Status API | Playback control |
+| --- | ---: | --- | --- | --- |
+| [SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer-Next) | 14558 | `GET /api/lyrics` | `GET /api/now-playing` | `POST /api/{play,pause,prev,next,seek}` |
+| [LX Music Desktop](https://github.com/lyswhut/lx-music-desktop) 2.7+ | 23330 | `GET /lyric-all`, `/lyric` fallback | `GET /status` | `GET /play`, `/pause`, `/skip-prev`, `/skip-next`, `/seek?offset=<seconds>` |
 
-This is an independently packaged widget ID (`org.mhpsy.splayernext.lyrics`), so the original widget remains installed unchanged.
+LX Music's `/lyric-all` contains LRC text, translations, romanization and optionally `lxlyric` **per-word** data; all are parsed locally. SPlayer-Next delivers its already-parsed LyricLine objects. Different players are selected explicitly in the widget settings; the existing choice defaults to SPlayer-Next for backward compatibility.
 
-**Credit**: original widget by mhpsy, adaptation for SPlayer-Next. MIT per original repository's README.
+## Install / update
 
+```bash
+sudo apt install qml6-module-qtwebsockets
+bash install.sh
+```
 
-## Plasma 6 package metadata fix (v1.1.2)
+The script repairs the older v1.1.0/1.1.1 missing Plasma 6 `KPackageStructure` metadata and upgrades in place. The widget ID **does not change** (`org.mhpsy.splayernext.lyrics`), so existing panel placements and settings remain intact.
 
-Adds the mandatory top-level `KPackageStructure: Plasma/Applet` metadata field and removes the obsolete `X-Plasma-MainScript` key. The old v1.1.0/v1.1.1 package lacked this field, so `kpackagetool6 -u` could not recognize the existing installation. Run `bash install.sh` from this source tree to repair only this widget's installed metadata and upgrade in place, preserving your Plasma widget configuration.
+Then right-click the panel → **Add Widgets** → **Music Lyrics**. In widget settings select **SPlayer-Next** or **LX Music / 洛雪音乐**, configure the relevant port, and enable the selected player's Open/External API. SPlayer's optional WebSocket requires a separate setting in SPlayer. LX Music uses local HTTP requests and needs no WebSocket.
+
+## Features
+
+- One-line panel lyrics with animations, selectable color/font, and expandable multi-line view
+- Plain LRC timing; SPlayer-Next and LX Music `lxlyric` word-by-word highlighting
+- Translation / romanization / bilingual display when the player supplies it
+- Playback controls and seek, with the respective player's documented methods and time units
+- **Hide the widget and release panel space when the selected API is unreachable; automatically show again when it recovers**
+- HTTP playback polling and local clock interpolation (900ms / 65ms); optional SPlayer WebSocket for immediate change notification
+- Original upstream credit and MIT license retained
+
+## Test the APIs
+
+```bash
+# SPlayer-Next
+curl -s http://127.0.0.1:14558/api/now-playing
+curl -s http://127.0.0.1:14558/api/lyrics
+
+# LX Music (enable Settings → Open API first)
+curl -s http://127.0.0.1:23330/status
+curl -s http://127.0.0.1:23330/lyric-all
+```
+
+LX Music API source: [official Open API specification](https://lxmusic.toside.cn/desktop/open-api) and [LX `lxlyric` format](https://lxmusic.toside.cn/desktop/custom-source). This project only **displays** the lyric data the players already have; they may independently fetch lyrics according to their own settings.
+
+## Testing
+
+```bash
+node tests/lyrics.test.cjs
+node tests/lx-lyrics.test.cjs
+node tests/api.test.cjs
+node tests/lx-api.test.cjs
+node tests/http.test.cjs
+python3 tests/check_structure.py
+```
+
+These exercise the QML JavaScript logic and metadata without a running Plasma desktop. Live KDE Plasma 6 / LX Music integration should also be verified on Linux.
+
+**Author:** qssn70. **Original project:** [mhpsy/kde-splayer-lyrics](https://github.com/mhpsy/kde-splayer-lyrics). **License:** MIT.

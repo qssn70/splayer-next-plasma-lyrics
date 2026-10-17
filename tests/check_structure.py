@@ -41,3 +41,13 @@ print("Static checks: passed")
 meta = json.loads((root / "metadata.json").read_text(encoding="utf-8"))
 assert meta.get("KPackageStructure") == "Plasma/Applet"
 assert meta["KPlugin"]["Authors"][0]["Name"] == "qssn70"
+
+# Both player modes retain separate settings and never request online lyrics.
+assert "playerSource" in key_names
+assert "lxApiPort" in key_names
+assert "<default>23330</default>" in (root / "contents/config/main.xml").read_text()
+assert '"/lyric-all"' in qml and '"/status?filter=' in qml
+assert 'playerSource === "splayer" && root.useWebSocket' in qml
+assert (root / "contents/ui/LxLyrics.js").is_file()
+assert meta["KPlugin"]["Version"] == "1.2.0"
+print("Dual player configuration: passed")

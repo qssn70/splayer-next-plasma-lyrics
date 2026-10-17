@@ -4,6 +4,8 @@
       xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
     <kcfgfile name=""/>
     <group name="General">
+        <entry name="playerSource" type="String"><default>splayer</default></entry>
+        <entry name="lxApiPort" type="Int"><default>23330</default></entry>
         <entry name="apiPort" type="Int"><default>14558</default></entry>
         <entry name="useWebSocket" type="Bool"><default>true</default></entry>
         <entry name="fontSize" type="Int"><default>13</default></entry>
@@ -16,7 +18,7 @@
         <entry name="animationDuration" type="Int"><default>300</default></entry>
         <entry name="maxWidth" type="Int"><default>400</default></entry>
         <entry name="minWidth" type="Int"><default>150</default></entry>
-        <entry name="idleText" type="String"><default>♪ SPlayer-Next Lyrics</default></entry>
+        <entry name="idleText" type="String"><default>♪ Music Lyrics</default></entry>
         <entry name="lyricMode" type="String"><default>original</default></entry>
         <entry name="showRomanInPopup" type="Bool"><default>false</default></entry>
     </group>
