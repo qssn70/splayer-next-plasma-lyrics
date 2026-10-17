@@ -23,6 +23,8 @@ MouseArea {
     property int animationDuration: 300
     property int maxWidth: 400
     property int minWidth: 150
+    property string sourceLabel: ""
+    property bool showSourceLabel: false
     property string songTitle: ""
     property string songArtist: ""
 
@@ -33,14 +35,15 @@ MouseArea {
 
     readonly property string displayText: {
         if (!apiConnected) return ""
-        if (currentLyric.length > 0) return currentLyric
-        if (songTitle.length > 0) return "♪ " + songTitle
-        return idleText
+        var line = currentLyric.length > 0 ? currentLyric
+            : (songTitle.length > 0 ? "♪ " + songTitle : idleText)
+        return showSourceLabel ? sourceLabel + "  " + line : line
     }
 
     // Also collapse the direct-panel representation to zero width when offline.
     // This avoids a blank slot if the panel ignores HiddenStatus for its layout.
     visible: apiConnected
+    implicitHeight: lyricLabel.implicitHeight + Kirigami.Units.smallSpacing
     Layout.fillHeight: apiConnected
     Layout.preferredWidth: apiConnected
         ? Math.min(Math.max(lyricLabel.implicitWidth + Kirigami.Units.smallSpacing * 2,
@@ -72,7 +75,9 @@ MouseArea {
 
             textFormat: karaokeMarkup.length > 0 && currentLyric.length > 0
                         ? Text.RichText : Text.PlainText
-            text: textFormat === Text.RichText ? karaokeMarkup : displayText
+            text: textFormat === Text.RichText
+                ? (showSourceLabel ? "<b>" + sourceLabel + "</b>&nbsp; " : "") + karaokeMarkup
+                : displayText
             elide: Text.ElideRight
             maximumLineCount: 1
             horizontalAlignment: Text.AlignHCenter

@@ -26,4 +26,4 @@ PYFIX
 else
     kpackagetool6 -t Plasma/Applet -i .
 fi
-echo 'Music Lyrics v1.2.0 installed. Log out/in if Plasma does not reload it.'
+echo 'Music Lyrics v1.3.0 installed. Log out/in if Plasma does not reload it.'

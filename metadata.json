@@ -6,12 +6,12 @@
             }
         ],
         "Category": "Multimedia",
-        "Description": "KDE Plasma 6 panel lyrics directly from SPlayer-Next or LX Music local APIs",
+        "Description": "Plasma 6 panel lyrics: auto switch SPlayer-Next and LX Music or show both when playing",
         "Icon": "view-media-lyrics",
         "Id": "org.mhpsy.splayernext.lyrics",
         "License": "MIT",
         "Name": "Music Lyrics (SPlayer-Next / LX Music)",
-        "Version": "1.2.0",
+        "Version": "1.3.0",
         "Website": "https://github.com/qssn70/splayer-next-plasma-lyrics"
     },
     "X-Plasma-API-Minimum-Version": "6.0",

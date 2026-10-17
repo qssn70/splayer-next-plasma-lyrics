@@ -1,0 +1,32 @@
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+const fs = require('node:fs');
+const script = fs.readFileSync(__dirname + '/../contents/ui/PlayerSelection.js', 'utf8').replace(/^\.pragma library\s*/m, '');
+const ctx = {};
+vm.createContext(ctx);
+vm.runInContext(script,ctx);
+const state=(connected=false,playing=false,hasTrack=false,lastActiveMs=0)=>({connected,playing,hasTrack,lastActiveMs});
+function chosen(mode,source,s,l) {return JSON.parse(JSON.stringify(ctx.choose(mode,source,s,l)));}
+function check(s,l,expected,mode='auto',source='splayer') {assert.deepEqual(chosen(mode,source,s,l),expected);}
+const off={splayer:false,lx:false,dual:false};
+const sOnly={splayer:true,lx:false,dual:false};
+const lOnly={splayer:false,lx:true,dual:false};
+const both={splayer:true,lx:true,dual:true};
+check(state(),state(),off);
+check(state(true),state(),sOnly);
+check(state(),state(true),lOnly);
+check(state(true,true,true),state(true,false,true),sOnly);
+check(state(true,false,true),state(true,true,true),lOnly);
+check(state(true,true,true),state(true,true,true),both);
+check(state(true,false,true,1000),state(true,false,true,2000),lOnly);
+check(state(true,false,true,2000),state(true,false,true,1000),sOnly);
+check(state(true,false,true),state(true,false,false),sOnly);
+check(state(true,false,false),state(true,false,true),lOnly);
+check(state(true,false,false),state(true,false,false),sOnly);
+check(state(false,true,true),state(true,true,true),lOnly);
+check(state(true,true,true),state(true,true,true),sOnly,'manual','splayer');
+check(state(true,true,true),state(true,true,true),lOnly,'manual','lx');
+check(state(false),state(true,true,true),off,'manual','splayer');
+check(state(true,true,true),state(false),off,'manual','lx');
+check(state(true),state(true,true,true),lOnly);
+console.log('PlayerSelection: all scenarios passed');

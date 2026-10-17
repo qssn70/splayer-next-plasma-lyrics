@@ -12,7 +12,7 @@ function library(name) {
 }
 const Lyrics = library('Lyrics');
 const LxLyrics = library('LxLyrics');
-const qml = fs.readFileSync(__dirname + '/../contents/ui/main.qml', 'utf8');
+const qml = fs.readFileSync(__dirname + '/../contents/ui/PlayerBridge.qml', 'utf8');
 const names = ['numeric','coverSource','clearTrack','applyTrack','setClock',
                'advanceClock','applyLxStatus','pollState','fetchLyrics',
                'onSocketMessage','sendControl','resetConnection'];
@@ -41,7 +41,7 @@ let online = true;
 const calls = [];
 const ctx = {
     Date, Math, Array, Number, String, JSON, isFinite, encodeURIComponent,
-    Lyrics, LxLyrics, playerSource: 'lx', apiPort: 14558, lxApiPort: 23330,
+    Lyrics, LxLyrics, playerSource: 'lx', bridgeEnabled: true, lastActiveMs: 0, apiPort: 14558, lxApiPort: 23330,
     apiConnected: false, trackId:'', songTitle:'', songArtist:'', coverUrl:'',
     lxLiveLyric:'', lyricLines:[], currentLineIndex:-1, currentTimeMs:0,
     durationMs:0, lyricOffsetMs:0,speed:1, isPlaying:false,

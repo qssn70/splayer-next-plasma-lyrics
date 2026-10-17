@@ -1,19 +1,18 @@
 import QtQuick
-import QtWebSockets
+import QtQuick.Layouts
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.kirigami as Kirigami
-import "Lyrics.js" as Lyrics
-import "LxLyrics.js" as LxLyrics
+import "PlayerSelection.js" as Selection
 
-// Local playback API lyrics only: SPlayer-Next or LX Music. No LRCLIB / MPRIS.
+// Both players are monitored in auto mode. Independent PlayerBridge instances
+// prevent concurrent songs/HTTP replies from replacing each other's lyrics.
 PlasmoidItem {
     id: root
-
-    readonly property string playerSource: plasmoid.configuration.playerSource
+    readonly property string selectionMode: plasmoid.configuration.selectionMode
+    readonly property string manualPlayer: plasmoid.configuration.playerSource
     readonly property int apiPort: plasmoid.configuration.apiPort
     readonly property int lxApiPort: plasmoid.configuration.lxApiPort
-    readonly property int currentApiPort: playerSource === "lx" ? lxApiPort : apiPort
     readonly property bool useWebSocket: plasmoid.configuration.useWebSocket
     readonly property string lyricMode: plasmoid.configuration.lyricMode
     readonly property bool showRomanInPopup: plasmoid.configuration.showRomanInPopup
@@ -29,443 +28,144 @@ PlasmoidItem {
     readonly property int minWidth: plasmoid.configuration.minWidth
     readonly property string idleText: plasmoid.configuration.idleText
 
-    property bool initialized: false
-    property bool apiConnected: false
-    property bool wsConnected: false
-    property string trackId: ""
-    property string songTitle: ""
-    property string songArtist: ""
-    property string coverUrl: ""
-    property string lxLiveLyric: ""
-    property var lyricLines: []
-    property int currentLineIndex: -1
-    property real currentTimeMs: 0
-    property real durationMs: 0
-    property real lyricOffsetMs: 0
-    property real speed: 1.0
-    property bool isPlaying: false
-    property real anchorPosition: 0
-    property double anchorAt: 0
-    property bool stateRequestPending: false
-    property double stateRequestStarted: 0
-    property int stateRequestSerial: 0
-    property int lyricRequestSerial: 0
-    property bool lyricRequestPending: false
-    property double lyricRequestStarted: 0
-    property double lastLyricAttempt: 0
-    property int apiGeneration: 0
-    property bool wsReconnectSuspended: false
-
-    readonly property string currentLyric: currentLineIndex >= 0
-        ? Lyrics.displayText(lyricLines[currentLineIndex], lyricMode)
-        : (playerSource === "lx" && lyricLines.length === 0 ? lxLiveLyric : "")
-    readonly property string karaokeMarkup: currentLineIndex >= 0
-        ? Lyrics.karaokeMarkup(lyricLines[currentLineIndex],
-            currentTimeMs + lyricOffsetMs, lyricMode,
-            String(Kirigami.Theme.highlightColor),
-            String(useCustomColor ? fontColor : Kirigami.Theme.textColor)) : ""
-
-    // Hide the actual Plasma applet, not just its disconnected warning text.
-    // The HTTP poll timers remain active so it reappears when the API recovers.
-    Plasmoid.status: root.apiConnected
-        ? PlasmaCore.Types.ActiveStatus : PlasmaCore.Types.HiddenStatus
-
-    preferredRepresentation: compactRepresentation
-
-    compactRepresentation: CompactRepresentation {
-        currentLyric: root.currentLyric
-        karaokeMarkup: root.karaokeMarkup
-        isPlaying: root.isPlaying
-        apiConnected: root.apiConnected
-        idleText: root.idleText
-        fontSize: root.fontSize
-        fontFamily: root.fontFamily
-        fontBold: root.fontBold
-        fontItalic: root.fontItalic
+    PlayerBridge {
+        id: splayer
+        playerSource: "splayer"
+        bridgeEnabled: root.selectionMode !== "manual" || root.manualPlayer === "splayer"
+        apiPort: root.apiPort
+        lxApiPort: root.lxApiPort
+        useWebSocket: root.useWebSocket
+        lyricMode: root.lyricMode
         useCustomColor: root.useCustomColor
         fontColor: root.fontColor
-        animationType: root.animationType
-        animationDuration: root.animationDuration
-        minWidth: root.minWidth
-        maxWidth: root.maxWidth
-        songTitle: root.songTitle
-        songArtist: root.songArtist
-        onTogglePlayback: root.sendControl("toggle", 0)
-        onExpandRequested: root.expanded = !root.expanded
+    }
+    PlayerBridge {
+        id: lxmusic
+        playerSource: "lx"
+        bridgeEnabled: root.selectionMode !== "manual" || root.manualPlayer === "lx"
+        apiPort: root.apiPort
+        lxApiPort: root.lxApiPort
+        useWebSocket: false
+        lyricMode: root.lyricMode
+        useCustomColor: root.useCustomColor
+        fontColor: root.fontColor
     }
 
-    fullRepresentation: FullRepresentation {
-        currentLyric: root.currentLyric
-        isPlaying: root.isPlaying
-        apiConnected: root.apiConnected
-        songTitle: root.songTitle
-        songArtist: root.songArtist
-        coverUrl: root.coverUrl
-        currentTimeMs: root.currentTimeMs
-        durationMs: root.durationMs
-        lyricLines: root.lyricLines
-        currentLineIndex: root.currentLineIndex
-        showRomanization: root.showRomanInPopup
-        onControlCommand: function(cmd, positionMs) { root.sendControl(cmd, positionMs) }
-    }
+    // Active-playing status wins. Two playing players get two lyrics slots.
+    // When neither plays, retain the most recently active connected player.
+    readonly property var selected: Selection.choose(selectionMode, manualPlayer,
+        {connected: splayer.apiConnected, playing: splayer.isPlaying,
+         hasTrack: splayer.trackId.length > 0, lastActiveMs: splayer.lastActiveMs},
+        {connected: lxmusic.apiConnected, playing: lxmusic.isPlaying,
+         hasTrack: lxmusic.trackId.length > 0, lastActiveMs: lxmusic.lastActiveMs})
+    readonly property bool showSplayer: selected.splayer
+    readonly property bool showLX: selected.lx
+    readonly property bool dualLyrics: selected.dual
 
-    function numeric(value, fallback) {
-        var n = Number(value)
-        return isFinite(n) ? n : fallback
-    }
+    // Preserve the legacy behavior: when no enabled API is reachable, the
+    // applet is hidden and consumes no space, but bridge timers keep polling.
+    Plasmoid.status: (showSplayer || showLX)
+        ? PlasmaCore.Types.ActiveStatus : PlasmaCore.Types.HiddenStatus
+    onShowSplayerChanged: if (!showSplayer && !showLX) expanded = false
+    onShowLXChanged: if (!showSplayer && !showLX) expanded = false
 
-    // Complete each request once. QML's XMLHttpRequest works directly from a plasmoid.
-    // Using only the loopback host prevents remote hosts from receiving song metadata.
-    function httpJson(method, path, payload, callback, asText) {
-        var request = new XMLHttpRequest()
-        var complete = false
-        function finish(ok, response) {
-            if (complete) return
-            complete = true
-            callback(ok, response)
+    preferredRepresentation: compactRepresentation
+    compactRepresentation: RowLayout {
+        id: panelRow
+        spacing: Kirigami.Units.smallSpacing
+        Layout.fillHeight: true
+
+        CompactRepresentation {
+            id: splayerLine
+            apiConnected: root.showSplayer
+            currentLyric: splayer.currentLyric
+            karaokeMarkup: splayer.karaokeMarkup
+            songTitle: splayer.songTitle
+            songArtist: splayer.songArtist
+            isPlaying: splayer.isPlaying
+            sourceLabel: "SPlayer"
+            showSourceLabel: root.dualLyrics
+            idleText: root.idleText
+            fontSize: root.fontSize
+            fontFamily: root.fontFamily
+            fontBold: root.fontBold
+            fontItalic: root.fontItalic
+            useCustomColor: root.useCustomColor
+            fontColor: root.fontColor
+            animationType: root.animationType
+            animationDuration: root.animationDuration
+            minWidth: root.minWidth
+            maxWidth: root.maxWidth
+            onTogglePlayback: splayer.sendControl("toggle", 0)
+            onExpandRequested: root.expanded = !root.expanded
         }
-        request.onreadystatechange = function() {
-            if (request.readyState !== XMLHttpRequest.DONE) return
-            if (request.status < 200 || request.status >= 300) {
-                finish(false, null)
-                return
-            }
-            if (asText) {
-                finish(true, request.responseText)
-            } else {
-                try { finish(true, JSON.parse(request.responseText)) }
-                catch (error) { finish(false, null) }
-            }
+        Rectangle {
+            visible: root.dualLyrics
+            Layout.preferredWidth: 1
+            Layout.preferredHeight: Math.max(splayerLine.implicitHeight, lxLine.implicitHeight)
+            color: Kirigami.Theme.disabledTextColor
+            opacity: 0.6
         }
-        request.onerror = function() { finish(false, null) }
-        try {
-            request.open(method, "http://127.0.0.1:" + currentApiPort + path, true)
-            if (method !== "GET") request.setRequestHeader("Content-Type", "application/json")
-            request.send(method === "GET" ? null : JSON.stringify(payload || {}))
-        } catch (error) {
-            finish(false, null)
-        }
-    }
-
-    function coverSource(cover) {
-        if (typeof cover !== "string") return ""
-        if (/^(https?:\/\/|file:\/\/)/i.test(cover)) return cover
-        if (cover.charAt(0) === "/") return "file://" + cover
-        return "" // private Electron protocols are not loadable by Plasma's QML Image
-    }
-
-    function clearTrack() {
-        trackId = ""
-        songTitle = ""
-        songArtist = ""
-        coverUrl = ""
-        lxLiveLyric = ""
-        lyricLines = []
-        currentLineIndex = -1
-        currentTimeMs = 0
-        durationMs = 0
-        lyricOffsetMs = 0
-        isPlaying = false
-        lyricRequestSerial++
-        lyricRequestPending = false
-        lastLyricAttempt = 0
-    }
-
-    function applyTrack(track) {
-        var nextId = track && track.id !== undefined && track.id !== null
-            ? String(track.id) : ""
-        var changed = nextId !== trackId
-        if (changed) {
-            trackId = nextId
-            lyricLines = []
-            lxLiveLyric = ""
-            currentLineIndex = -1
-            lyricRequestSerial++
-            lyricRequestPending = false
-            lastLyricAttempt = 0
-        }
-        songTitle = track && typeof track.title === "string" ? track.title : ""
-        if (track && Array.isArray(track.artists)) {
-            songArtist = track.artists.map(function(artist) { return artist.name || "" })
-                .filter(function(name) { return name.length > 0 }).join(", ")
-        } else {
-            songArtist = ""
-        }
-        coverUrl = track ? coverSource(track.cover) : ""
-        durationMs = track ? Math.max(0, numeric(track.duration, 0)) : 0
-        return changed
-    }
-
-    function setClock(position, playing, rate, timestamp) {
-        var now = Date.now()
-        isPlaying = !!playing
-        speed = Math.max(0.5, Math.min(2.0, numeric(rate, 1)))
-        var lag = now - numeric(timestamp, now)
-        // Main process reports a timestamp valid at the start of the audio position.
-        lag = Math.max(0, Math.min(lag, 5000))
-        anchorPosition = Math.max(0, numeric(position, 0)) + (isPlaying ? lag * speed : 0)
-        anchorAt = now
-        advanceClock()
-    }
-
-    function advanceClock() {
-        var elapsed = isPlaying ? Math.max(0, Date.now() - anchorAt) * speed : 0
-        var next = anchorPosition + elapsed
-        currentTimeMs = Math.max(0, durationMs > 0 ? Math.min(durationMs, next) : next)
-        currentLineIndex = Lyrics.currentIndex(lyricLines, currentTimeMs + lyricOffsetMs)
-    }
-
-    function applyLxStatus(snapshot) {
-        // LX Music Open API: progress/duration are seconds, not milliseconds.
-        var name = typeof snapshot.name === "string" ? snapshot.name : ""
-        var singer = typeof snapshot.singer === "string" ? snapshot.singer : ""
-        var album = typeof snapshot.albumName === "string" ? snapshot.albumName : ""
-        var seconds = Math.max(0, numeric(snapshot.duration, 0))
-        var track = null
-        if (name) {
-            track = {
-                id: "lx:" + JSON.stringify([name, singer, album, Math.round(seconds * 1000)]),
-                title: name,
-                artists: singer ? [{name: singer}] : [],
-                cover: snapshot.picUrl || "",
-                duration: seconds * 1000
-            }
-        }
-        var changed = applyTrack(track)
-        lxLiveLyric = typeof snapshot.lyricLineText === "string"
-            ? snapshot.lyricLineText.replace(/\s+/g, " ").trim() : ""
-        lyricOffsetMs = 0  // LRC [offset] is already included by LxLyrics.js
-        setClock(numeric(snapshot.progress, 0) * 1000,
-                 snapshot.status === "playing",
-                 numeric(snapshot.playbackRate, 1), Date.now())
-        return changed
-    }
-
-    function pollState(force) {
-        if (stateRequestPending && Date.now() - stateRequestStarted < 3000) return
-        stateRequestPending = true
-        stateRequestStarted = Date.now()
-        var serial = ++stateRequestSerial
-        var generation = apiGeneration
-        var lx = playerSource === "lx"
-        var endpoint = lx
-            ? "/status?filter=status,name,singer,albumName,duration,progress,playbackRate,picUrl,lyricLineText"
-            : "/api/now-playing"
-        httpJson("GET", endpoint, null, function(ok, snapshot) {
-            if (serial !== stateRequestSerial || generation !== apiGeneration) return
-            stateRequestPending = false
-            if (!ok || !snapshot || typeof snapshot !== "object"
-                    || (lx && typeof snapshot.status !== "string")) {
-                apiConnected = false
-                isPlaying = false
-                return
-            }
-            apiConnected = true
-            if (lx) {
-                var lxChanged = applyLxStatus(snapshot)
-                if (trackId && (lxChanged || (!lyricLines.length &&
-                        Date.now() - lastLyricAttempt > 12000))) fetchLyrics()
-                return
-            }
-            var changed = applyTrack(snapshot.track || null)
-            lyricOffsetMs = numeric(snapshot.lyricOffsetMs, 0)
-            setClock(snapshot.position, snapshot.playing, snapshot.speed, snapshot.sendTimestamp)
-            if (!trackId) return
-            if (snapshot.lyricAvailable === false && lyricLines.length > 0) {
-                lyricLines = []
-                currentLineIndex = -1
-            }
-            if ((changed || (snapshot.lyricAvailable && lyricLines.length === 0))
-                    && Date.now() - lastLyricAttempt > 700) fetchLyrics()
-        })
-    }
-
-    function fetchLyrics(force) {
-        if (!trackId || !apiConnected) return
-        if (lyricRequestPending && Date.now() - lyricRequestStarted < 3500) return
-        if (!force && Date.now() - lastLyricAttempt < 700) return
-        var wantedId = trackId
-        var generation = apiGeneration
-        var serial = ++lyricRequestSerial
-        lastLyricAttempt = Date.now()
-        lyricRequestPending = true
-        lyricRequestStarted = Date.now()
-        if (playerSource === "lx") {
-            // LX /lyric-all serves the player's own LRC, translation, romanization,
-            // and optional lxlyric karaoke data. Fallback to /lyric plain text.
-            httpJson("GET", "/lyric-all", null, function(ok, reply) {
-                if (serial !== lyricRequestSerial || generation !== apiGeneration) return
-                if (!ok || !reply || typeof reply !== "object") {
-                    httpJson("GET", "/lyric", null, function(lrcOk, lrcText) {
-                        if (serial !== lyricRequestSerial || generation !== apiGeneration) return
-                        lyricRequestPending = false
-                        if (!lrcOk || trackId !== wantedId) return
-                        lyricLines = Lyrics.normalizeLines(LxLyrics.fromApi({lyric: lrcText}))
-                        advanceClock()
-                    }, true)
-                    return
-                }
-                lyricRequestPending = false
-                if (trackId !== wantedId) return
-                lyricLines = Lyrics.normalizeLines(LxLyrics.fromApi(reply))
-                advanceClock()
-            })
-            return
-        }
-        httpJson("GET", "/api/lyrics", null, function(ok, reply) {
-            if (serial !== lyricRequestSerial || generation !== apiGeneration) return
-            lyricRequestPending = false
-            if (!ok || !reply || trackId !== wantedId) return
-            // Guard against an old track's response arriving during a rapid switch.
-            if (String(reply.trackId || "") !== wantedId) return
-            var nextLines = Lyrics.normalizeLines(reply.lyric)
-            lyricLines = nextLines
-            lyricOffsetMs = numeric(reply.lyricOffsetMs, lyricOffsetMs)
-            advanceClock()
-        })
-    }
-
-    function onSocketMessage(message) {
-        if (playerSource !== "splayer") return
-        var event
-        try { event = JSON.parse(message) } catch (error) { return }
-        if (!event || event.kind !== "event") return
-        switch (event.type) {
-        case "track":
-            // Track updates can precede the new lyric contents. Poll the REST snapshot.
-            if (event.data && event.data.track) applyTrack(event.data.track)
-            else applyTrack(null)
-            pollState(true)
-            break
-        case "lyric":
-            // WS data has no trackId, so confirm identity via /api/lyrics.
-            pollState(true)
-            fetchLyrics(true)
-            break
-        case "lyricOffset":
-            if (event.data && String(event.data.trackId || "") === trackId) {
-                lyricOffsetMs = numeric(event.data.offsetMs, lyricOffsetMs)
-                advanceClock()
-            }
-            break
-        case "state":
-        case "loading":
-        case "stopped":
-        case "ended":
-        case "transition":
-            pollState(true)
-            break
+        CompactRepresentation {
+            id: lxLine
+            apiConnected: root.showLX
+            currentLyric: lxmusic.currentLyric
+            karaokeMarkup: lxmusic.karaokeMarkup
+            songTitle: lxmusic.songTitle
+            songArtist: lxmusic.songArtist
+            isPlaying: lxmusic.isPlaying
+            sourceLabel: "LX"
+            showSourceLabel: root.dualLyrics
+            idleText: root.idleText
+            fontSize: root.fontSize
+            fontFamily: root.fontFamily
+            fontBold: root.fontBold
+            fontItalic: root.fontItalic
+            useCustomColor: root.useCustomColor
+            fontColor: root.fontColor
+            animationType: root.animationType
+            animationDuration: root.animationDuration
+            minWidth: root.minWidth
+            maxWidth: root.maxWidth
+            onTogglePlayback: lxmusic.sendControl("toggle", 0)
+            onExpandRequested: root.expanded = !root.expanded
         }
     }
 
-    function sendControl(command, positionMs) {
-        if (!apiConnected) return
-        var op = command === "toggle" ? (isPlaying ? "pause" : "play") : command
-        if (["play", "pause", "prev", "next", "stop", "seek"].indexOf(op) === -1) return
-        var payload = op === "seek" ? {positionMs: Math.max(0, Math.round(positionMs))} : {}
-        var controlGeneration = apiGeneration
-        if (playerSource === "lx") {
-            var paths = {play: "/play", pause: "/pause",
-                         prev: "/skip-prev", next: "/skip-next"}
-            var path = op === "seek"
-                ? "/seek?offset=" + encodeURIComponent((payload.positionMs / 1000).toFixed(3))
-                : paths[op]
-            if (!path) return
-            httpJson("GET", path, null, function(ok) {
-                if (!ok || controlGeneration !== apiGeneration || playerSource !== "lx") return
-                if (op === "seek") setClock(payload.positionMs, isPlaying, speed, Date.now())
-                else if (op === "play" || op === "pause") isPlaying = op === "play"
-                resyncTimer.restart()
-            }, true)
-            return
+    // Both full lyric timelines are available independently in dual mode.
+    fullRepresentation: RowLayout {
+        spacing: Kirigami.Units.smallSpacing
+        FullRepresentation {
+            playerLabel: root.dualLyrics ? "SPlayer-Next" : ""
+            visible: root.showSplayer
+            currentLyric: splayer.currentLyric
+            isPlaying: splayer.isPlaying
+            apiConnected: splayer.apiConnected
+            songTitle: splayer.songTitle
+            songArtist: splayer.songArtist
+            coverUrl: splayer.coverUrl
+            currentTimeMs: splayer.currentTimeMs
+            durationMs: splayer.durationMs
+            lyricLines: splayer.lyricLines
+            currentLineIndex: splayer.currentLineIndex
+            showRomanization: root.showRomanInPopup
+            onControlCommand: function(cmd, positionMs) { splayer.sendControl(cmd, positionMs) }
         }
-        httpJson("POST", "/api/" + op, payload, function(ok, response) {
-            if (controlGeneration !== apiGeneration || playerSource !== "splayer") return
-            if (ok && response && response.ok) {
-                if (op === "seek") setClock(payload.positionMs, isPlaying, speed, Date.now())
-                else if (op === "play" || op === "pause") isPlaying = op === "play"
-                resyncTimer.restart()
-            }
-        })
-    }
-
-    function resetConnection() {
-        apiGeneration++
-        stateRequestSerial++
-        stateRequestPending = false
-        apiConnected = false
-        clearTrack()
-        wsConnected = false
-        wsReconnectSuspended = true
-        reconnectTimer.restart()
-        pollState(true)
-    }
-
-    onApiConnectedChanged: { if (!apiConnected) expanded = false }
-    onPlayerSourceChanged: { if (initialized) resetConnection() }
-    onApiPortChanged: { if (initialized && playerSource === "splayer") resetConnection() }
-    onLxApiPortChanged: { if (initialized && playerSource === "lx") resetConnection() }
-    onLyricModeChanged: { if (initialized) advanceClock() }
-    Component.onCompleted: initialized = true
-
-    Timer {
-        id: bootstrapTimer
-        interval: 200
-        running: true
-        repeat: false
-        onTriggered: root.pollState(true)
-    }
-    Timer {
-        id: stateTimer
-        interval: 900
-        repeat: true
-        running: true
-        onTriggered: root.pollState(false)
-    }
-    Timer {
-        id: renderingTimer
-        interval: 65
-        repeat: true
-        running: root.apiConnected && root.isPlaying
-        onTriggered: root.advanceClock()
-    }
-    Timer {
-        id: resyncTimer
-        interval: 180
-        repeat: false
-        onTriggered: root.pollState(true)
-    }
-    Timer {
-        // Covers lyric-source changes even with WebSocket disabled.
-        id: lyricRefreshTimer
-        interval: 12000
-        repeat: true
-        running: root.apiConnected
-        onTriggered: root.fetchLyrics(true)
-    }
-    Timer {
-        id: reconnectTimer
-        interval: 3000
-        repeat: false
-        onTriggered: root.wsReconnectSuspended = false
-    }
-    WebSocket {
-        id: ws
-        url: "ws://127.0.0.1:" + root.apiPort + "/ws"
-        active: root.playerSource === "splayer" && root.useWebSocket && !root.wsReconnectSuspended
-        onStatusChanged: {
-            if (status === WebSocket.Open) {
-                root.wsConnected = true
-                root.pollState(true)
-                root.fetchLyrics(true)
-            } else if (status === WebSocket.Error || status === WebSocket.Closed) {
-                root.wsConnected = false
-                if (root.playerSource === "splayer" && root.useWebSocket && !root.wsReconnectSuspended) {
-                    root.wsReconnectSuspended = true
-                    reconnectTimer.restart()
-                }
-            }
+        FullRepresentation {
+            playerLabel: root.dualLyrics ? "LX Music" : ""
+            visible: root.showLX
+            currentLyric: lxmusic.currentLyric
+            isPlaying: lxmusic.isPlaying
+            apiConnected: lxmusic.apiConnected
+            songTitle: lxmusic.songTitle
+            songArtist: lxmusic.songArtist
+            coverUrl: lxmusic.coverUrl
+            currentTimeMs: lxmusic.currentTimeMs
+            durationMs: lxmusic.durationMs
+            lyricLines: lxmusic.lyricLines
+            currentLineIndex: lxmusic.currentLineIndex
+            showRomanization: root.showRomanInPopup
+            onControlCommand: function(cmd, positionMs) { lxmusic.sendControl(cmd, positionMs) }
         }
-        onTextMessageReceived: function(message) { root.onSocketMessage(message) }
     }
 }

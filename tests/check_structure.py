@@ -11,25 +11,26 @@ assert meta["KPlugin"]["Authors"] == [{"Name": "qssn70"}]
 xml = ET.parse(root / "contents/config/main.xml")
 key_names = {el.get("name") for el in xml.iter() if el.tag.endswith("entry")}
 qml = (root / "contents/ui/main.qml").read_text()
+controller = (root / "contents/ui/PlayerBridge.qml").read_text()
 config = (root / "contents/ui/config/ConfigGeneral.qml").read_text()
 for prop in re.findall(r"plasmoid\.configuration\.([A-Za-z0-9_]+)", qml):
     assert prop in key_names, f"undefined config property {prop}"
 for name in key_names:
     assert "cfg_" + name in config, f"missing configuration field {name}"
 compact = (root / "contents/ui/CompactRepresentation.qml").read_text()
-assert "Plasmoid.status: root.apiConnected" in qml
+assert "Plasmoid.status: (showSplayer || showLX)" in qml
 assert "PlasmaCore.Types.HiddenStatus" in qml
 assert "PlasmaCore.Types.ActiveStatus" in qml
-assert "running: true" in qml  # Offline polling must remain enabled for auto-recovery.
+assert "running: root.bridgeEnabled" in controller  # Offline polling must remain enabled for auto-recovery.
 assert "visible: apiConnected" in compact
-assert "onApiConnectedChanged: { if (!apiConnected) expanded = false }" in qml
+assert "Plasmoid.status: (showSplayer || showLX)" in qml
 assert "if (!apiConnected) return \"\"" in compact
 assert "Layout.minimumWidth: apiConnected" in compact
 assert "Layout.maximumWidth: apiConnected" in compact
 assert "Layout.preferredWidth: apiConnected" in compact
 for s in ["/api/now-playing", "/api/lyrics", '"/ws"', "lyricOffsetMs", "sendTimestamp"]:
-    assert s in qml, f"missing API field {s}"
-code_only = "\n".join(line for line in qml.splitlines() if not line.lstrip().startswith("//"))
+    assert s in controller, f"missing API field {s}"
+code_only = "\n".join(line for line in (qml+controller).splitlines() if not line.lstrip().startswith("//"))
 for forbidden in ["lrclib", "music.163.com", "/api/control/song-info"]:
     assert forbidden.lower() not in code_only.lower()
 for file in list(root.rglob('*.qml')):
@@ -46,8 +47,21 @@ assert meta["KPlugin"]["Authors"][0]["Name"] == "qssn70"
 assert "playerSource" in key_names
 assert "lxApiPort" in key_names
 assert "<default>23330</default>" in (root / "contents/config/main.xml").read_text()
-assert '"/lyric-all"' in qml and '"/status?filter=' in qml
-assert 'playerSource === "splayer" && root.useWebSocket' in qml
+assert '"/lyric-all"' in controller and '"/status?filter=' in controller
+assert 'playerSource === "splayer" && root.useWebSocket' in controller
 assert (root / "contents/ui/LxLyrics.js").is_file()
-assert meta["KPlugin"]["Version"] == "1.2.0"
+assert meta["KPlugin"]["Version"] == "1.3.0"
 print("Dual player configuration: passed")
+
+assert "selectionMode" in key_names
+assert "<default>auto</default>" in (root / "contents/config/main.xml").read_text()
+assert "onBridgeEnabledChanged" in controller
+assert "root.dualLyrics" in qml
+assert "PlayerSelection.js" in qml
+assert "PlayerBridge {" in qml
+assert qml.count("PlayerBridge {") == 2
+assert qml.count("CompactRepresentation {") == 2
+assert qml.count("FullRepresentation {") == 2
+assert "sourceLabel" in compact
+assert (root / "tests/selection.test.cjs").exists()
+print("Automatic dual-player configuration: passed")

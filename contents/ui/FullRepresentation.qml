@@ -7,6 +7,7 @@ import org.kde.kirigami as Kirigami
 ColumnLayout {
     id: fullRoot
 
+    property string playerLabel: ""
     property string currentLyric: ""
     property bool isPlaying: false
     property bool apiConnected: false
@@ -60,6 +61,14 @@ ColumnLayout {
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 4
+            Label {
+                visible: playerLabel.length > 0
+                text: playerLabel
+                color: Kirigami.Theme.highlightColor
+                font.bold: true
+                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                Layout.fillWidth: true
+            }
             Label {
                 text: songTitle.length > 0 ? songTitle : "尚未播放音乐"
                 font.pixelSize: Kirigami.Theme.defaultFont.pixelSize * 1.3

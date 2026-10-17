@@ -7,6 +7,7 @@ import org.kde.kcmutils as KCM
 KCM.SimpleKCM {
     id: configPage
 
+    property string cfg_selectionMode: plasmoid.configuration.selectionMode
     property string cfg_playerSource: plasmoid.configuration.playerSource
     property alias cfg_lxApiPort: lxPortField.value
     property alias cfg_apiPort: apiPortField.value
@@ -25,6 +26,7 @@ KCM.SimpleKCM {
     property string cfg_lyricMode: plasmoid.configuration.lyricMode
     property alias cfg_showRomanInPopup: showRomanInPopupCheck.checked
 
+    readonly property var selectionModes: ["auto", "manual"]
     readonly property var playerSources: ["splayer", "lx"]
     readonly property var lyricModes: ["original", "translation", "bilingual", "romanization"]
     readonly property var animationModes: ["none", "fade", "slide", "slideFade"]
@@ -37,7 +39,21 @@ KCM.SimpleKCM {
             Kirigami.FormData.label: i18n("Player API")
         }
         ComboBox {
+            id: modeCombo
+            Kirigami.FormData.label: i18n("Selection mode:")
+            model: [i18n("Automatic (default)"), i18n("Manual")]
+            currentIndex: Math.max(0, configPage.selectionModes.indexOf(configPage.cfg_selectionMode))
+            onActivated: function(index) { configPage.cfg_selectionMode = configPage.selectionModes[index] }
+        }
+        Label {
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+            text: i18n("Auto: show the currently playing app. If both are playing, show two independent lyrics slots and timelines.")
+            color: Kirigami.Theme.disabledTextColor
+        }
+        ComboBox {
             id: sourceCombo
+            visible: configPage.cfg_selectionMode === "manual"
             Kirigami.FormData.label: i18n("Player:")
             model: ["SPlayer-Next", "LX Music / 洛雪音乐"]
             currentIndex: Math.max(0, configPage.playerSources.indexOf(configPage.cfg_playerSource))
@@ -46,27 +62,29 @@ KCM.SimpleKCM {
         SpinBox {
             id: lxPortField
             Kirigami.FormData.label: i18n("LX Music HTTP port:")
-            visible: configPage.cfg_playerSource === "lx"
+            visible: configPage.cfg_selectionMode === "auto" || configPage.cfg_playerSource === "lx"
             from: 1024
             to: 65535
         }
         SpinBox {
             id: apiPortField
-            visible: configPage.cfg_playerSource !== "lx"
+            visible: configPage.cfg_selectionMode === "auto" || configPage.cfg_playerSource !== "lx"
             Kirigami.FormData.label: i18n("Local API port:")
             from: 1024
             to: 65535
         }
         CheckBox {
             id: useWebSocketCheck
-            visible: configPage.cfg_playerSource !== "lx"
+            visible: configPage.cfg_selectionMode === "auto" || configPage.cfg_playerSource !== "lx"
             Kirigami.FormData.label: i18n("WebSocket events:")
             text: i18n("Enable faster track / lyrics updates")
         }
         Label {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            text: configPage.cfg_playerSource === "lx"
+            text: configPage.cfg_selectionMode === "auto"
+                ? i18n("Enable each player's local API independently. Both are polled; dual-playing displays both. No online lyric search.")
+                : configPage.cfg_playerSource === "lx"
                 ? i18n("Enable LX Music Settings → Open API (default 23330). This widget reads /status and /lyric-all directly, including translations and lxlyric word timestamps. No online lyric search.")
                 : i18n("Enable External API in SPlayer-Next settings. WebSocket is optional; HTTP-only mode still works. No online lyric search.")
             color: Kirigami.Theme.disabledTextColor

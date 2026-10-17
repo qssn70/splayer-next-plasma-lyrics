@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
-const qml = fs.readFileSync(__dirname + '/../contents/ui/main.qml', 'utf8');
+const qml = fs.readFileSync(__dirname + '/../contents/ui/PlayerBridge.qml', 'utf8');
 const start = qml.indexOf('    function httpJson(');
 const end = qml.indexOf('\n    function coverSource(', start);
 assert.ok(start >= 0 && end > start);

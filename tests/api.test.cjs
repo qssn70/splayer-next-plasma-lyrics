@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
-const qml = fs.readFileSync(__dirname + '/../contents/ui/main.qml', 'utf8');
+const qml = fs.readFileSync(__dirname + '/../contents/ui/PlayerBridge.qml', 'utf8');
 const logic = fs.readFileSync(__dirname + '/../contents/ui/Lyrics.js', 'utf8').replace(/^\.pragma library\s*/m, '');
 const lyricContext = {Array, Number, String, isFinite};
 vm.createContext(lyricContext);
@@ -28,7 +28,7 @@ let lyrics = {trackId:'one', lyricOffsetMs: 50, lyric:[
 const requests = [];
 const ctx = {
     Lyrics: lyricContext, Date, Math, Array, Number, String, isFinite,
-    playerSource: 'splayer',
+    playerSource: 'splayer', bridgeEnabled: true, lastActiveMs: 0,
     trackId:'', songTitle:'',songArtist:'',coverUrl:'', lyricLines:[],
     currentLineIndex:-1, currentTimeMs:0,durationMs:0,lyricOffsetMs:0,
     speed:1,isPlaying:false,anchorPosition:0,anchorAt:0,

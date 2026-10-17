@@ -13,7 +13,15 @@ A KDE Plasma 6 panel lyrics widget adapted from [mhpsy/kde-splayer-lyrics](https
 | [SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer-Next) | 14558 | `GET /api/lyrics` | `GET /api/now-playing` | `POST /api/{play,pause,prev,next,seek}` |
 | [LX Music Desktop](https://github.com/lyswhut/lx-music-desktop) 2.7+ | 23330 | `GET /lyric-all`, `/lyric` fallback | `GET /status` | `GET /play`, `/pause`, `/skip-prev`, `/skip-next`, `/seek?offset=<seconds>` |
 
-LX Music's `/lyric-all` contains LRC text, translations, romanization and optionally `lxlyric` **per-word** data; all are parsed locally. SPlayer-Next delivers its already-parsed LyricLine objects. Different players are selected explicitly in the widget settings; the existing choice defaults to SPlayer-Next for backward compatibility.
+LX Music's `/lyric-all` contains LRC text, translations, romanization and optionally `lxlyric` **per-word** data; all are parsed locally. SPlayer-Next delivers its already-parsed LyricLine objects. Both players can be monitored independently in automatic mode (default); manual selection is also available.
+
+## Automatic selection and simultaneous playback (v1.3.0)
+
+- **Default: Automatic.** Both loopback APIs are monitored. When one player is playing, the panel follows only that player.
+- **Both playing:** the taskbar shows **two independent lyric slots** labeled `SPlayer` and `LX`, separated by a line. Both have their own lyric text, per-word timing, animations and middle-click pause/play actions. Expanding the widget shows both lyric lists and controls side by side.
+- **Neither playing:** retain the most recently active connected player; if no recent activity is known, prefer the connected player with a loaded track, then SPlayer-Next. If both APIs are unreachable, hide the entire applet without using panel space.
+- **Manual:** Widget configuration -> Selection mode -> Manual -> choose SPlayer-Next or LX Music. Other player is not polled in manual mode.
+- Switching modes does not change the widget ID, the saved port numbers or visual settings.
 
 ## Install / update
 
@@ -24,7 +32,7 @@ bash install.sh
 
 The script repairs the older v1.1.0/1.1.1 missing Plasma 6 `KPackageStructure` metadata and upgrades in place. The widget ID **does not change** (`org.mhpsy.splayernext.lyrics`), so existing panel placements and settings remain intact.
 
-Then right-click the panel → **Add Widgets** → **Music Lyrics**. In widget settings select **SPlayer-Next** or **LX Music / 洛雪音乐**, configure the relevant port, and enable the selected player's Open/External API. SPlayer's optional WebSocket requires a separate setting in SPlayer. LX Music uses local HTTP requests and needs no WebSocket.
+Then right-click the panel → **Add Widgets** → **Music Lyrics**. In widget settings choose Automatic (default) or Manual, configure both local API ports, and enable the corresponding player Open/External APIs. SPlayer's optional WebSocket requires a separate setting in SPlayer. LX Music uses local HTTP requests and needs no WebSocket.
 
 ## Features
 
@@ -32,7 +40,7 @@ Then right-click the panel → **Add Widgets** → **Music Lyrics**. In widget s
 - Plain LRC timing; SPlayer-Next and LX Music `lxlyric` word-by-word highlighting
 - Translation / romanization / bilingual display when the player supplies it
 - Playback controls and seek, with the respective player's documented methods and time units
-- **Hide the widget and release panel space when the selected API is unreachable; automatically show again when it recovers**
+- **Hide the widget and release panel space when both enabled APIs are unreachable; automatically show again when either recovers**
 - HTTP playback polling and local clock interpolation (900ms / 65ms); optional SPlayer WebSocket for immediate change notification
 - Original upstream credit and MIT license retained
 
@@ -58,6 +66,8 @@ node tests/lx-lyrics.test.cjs
 node tests/api.test.cjs
 node tests/lx-api.test.cjs
 node tests/http.test.cjs
+node tests/selection.test.cjs
+node tests/concurrent-api.test.cjs
 python3 tests/check_structure.py
 ```
 

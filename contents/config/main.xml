@@ -4,6 +4,7 @@
       xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
     <kcfgfile name=""/>
     <group name="General">
+        <entry name="selectionMode" type="String"><default>auto</default></entry>
         <entry name="playerSource" type="String"><default>splayer</default></entry>
         <entry name="lxApiPort" type="Int"><default>23330</default></entry>
         <entry name="apiPort" type="Int"><default>14558</default></entry>
