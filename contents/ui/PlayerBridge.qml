@@ -1,6 +1,5 @@
 import QtQuick
 import QtWebSockets
-import org.kde.kirigami as Kirigami
 import "Lyrics.js" as Lyrics
 import "LxLyrics.js" as LxLyrics
 
@@ -18,8 +17,6 @@ Item {
     readonly property int currentApiPort: playerSource === "lx" ? lxApiPort : apiPort
     property bool useWebSocket: true
     property string lyricMode: "original"
-    property bool useCustomColor: false
-    property string fontColor: "#ffffff"
     property bool initialized: false
     property bool apiConnected: false
     property bool wsConnected: false
@@ -51,11 +48,7 @@ Item {
     readonly property string currentLyric: currentLineIndex >= 0
         ? Lyrics.displayText(lyricLines[currentLineIndex], lyricMode)
         : (playerSource === "lx" && lyricLines.length === 0 ? lxLiveLyric : "")
-    readonly property string karaokeMarkup: currentLineIndex >= 0
-        ? Lyrics.karaokeMarkup(lyricLines[currentLineIndex],
-            currentTimeMs + lyricOffsetMs, lyricMode,
-            String(Kirigami.Theme.highlightColor),
-            String(useCustomColor ? fontColor : Kirigami.Theme.textColor)) : ""
+    // The panel view owns karaoke HTML coloring to use its inherited theme.
 
     function numeric(value, fallback) {
         var n = Number(value)

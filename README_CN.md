@@ -99,3 +99,11 @@ python3 tests/check_structure.py
 本修改版作者：**qssn70**。
 
 原小组件项目：[mhpsy/kde-splayer-lyrics](https://github.com/mhpsy/kde-splayer-lyrics)（MIT）。保留原许可证及版权说明；SPlayer-Next、LX Music 为独立上游项目。
+
+## v1.3.1：修复深色主题歌词黑字
+
+修复 LX Music 提供逐字歌词（`lxlyric`）时，任务栏深色背景仍显示黑字的问题。
+逐字歌词颜色现在由**实际任务栏歌词视图**读取主题文字色和高亮色，并转换为
+`#RRGGBB` 格式生成富文本，不再由不可见的播放器控制器预先注入颜色。
+原文、翻译、音译及双播放器同时播放时的两个歌词位都能跟随当前 Plasma 主题；
+用户主动设置的自定义文字颜色仍然生效。

@@ -74,3 +74,12 @@ python3 tests/check_structure.py
 These exercise the QML JavaScript logic and metadata without a running Plasma desktop. Live KDE Plasma 6 / LX Music integration should also be verified on Linux.
 
 **Author:** qssn70. **Original project:** [mhpsy/kde-splayer-lyrics](https://github.com/mhpsy/kde-splayer-lyrics). **License:** MIT.
+
+## v1.3.1: Dark theme lyric color fix
+
+Fixed karaoke text appearing black on dark Plasma panels, particularly with LX Music
+`lxlyric` tracks. The panel representation now resolves its own theme foreground and
+highlight colors and encodes them as six-digit HTML colors, rather than receiving
+precolored rich text from an offscreen player controller. Original text, translation,
+romaji and both simultaneous-lyrics slots follow the active panel theme. Existing
+custom text color settings still take precedence.

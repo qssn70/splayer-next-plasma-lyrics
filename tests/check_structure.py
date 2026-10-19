@@ -50,7 +50,7 @@ assert "<default>23330</default>" in (root / "contents/config/main.xml").read_te
 assert '"/lyric-all"' in controller and '"/status?filter=' in controller
 assert 'playerSource === "splayer" && root.useWebSocket' in controller
 assert (root / "contents/ui/LxLyrics.js").is_file()
-assert meta["KPlugin"]["Version"] == "1.3.0"
+assert meta["KPlugin"]["Version"] == "1.3.1"
 print("Dual player configuration: passed")
 
 assert "selectionMode" in key_names
@@ -65,3 +65,13 @@ assert qml.count("FullRepresentation {") == 2
 assert "sourceLabel" in compact
 assert (root / "tests/selection.test.cjs").exists()
 print("Automatic dual-player configuration: passed")
+
+# Karaoke coloring must use the actual panel's inherited Kirigami palette.
+assert 'htmlHex(resolvedHighlightColor), htmlHex(resolvedTextColor)' in compact
+assert 'color: compactRoot.resolvedTextColor' in compact
+assert 'Kirigami.Theme.textColor' not in controller
+assert 'Kirigami.Theme.highlightColor' not in controller
+assert qml.count('lyricTimeMs:') == 2
+assert qml.count('lyricLine:') == 2
+assert (root / 'tests/theme-colors.test.cjs').is_file()
+print('Panel dark/light palette inheritance: passed')

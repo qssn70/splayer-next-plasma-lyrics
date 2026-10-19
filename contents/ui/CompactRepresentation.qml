@@ -3,13 +3,34 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.plasma.plasmoid
 import org.kde.kirigami as Kirigami
+import "Lyrics.js" as Lyrics
 
 // Retains the layout/animation concept of mhpsy's SPlayer Lyrics plasmoid.
 MouseArea {
     id: compactRoot
 
     property string currentLyric: ""
-    property string karaokeMarkup: ""
+    // Receive raw timestamps, not precolored HTML from an offscreen PlayerBridge.
+    // Theme colors must be resolved in the panel representation itself.
+    property var lyricLine: null
+    property real lyricTimeMs: 0
+    property string lyricMode: "original"
+    readonly property color resolvedTextColor: useCustomColor
+        ? fontColor : Kirigami.Theme.textColor
+    readonly property color resolvedHighlightColor: Kirigami.Theme.highlightColor
+    readonly property string karaokeMarkup: lyricLine
+        ? Lyrics.karaokeMarkup(lyricLine, lyricTimeMs, lyricMode,
+                              htmlHex(resolvedHighlightColor), htmlHex(resolvedTextColor)) : ""
+
+    // Qt's QColor.toString() may yield alpha-inclusive hex which isn't reliably
+    // accepted by QTextDocument's limited HTML/CSS subset. Use #RRGGBB.
+    function htmlHex(colorValue) {
+        function channel(component) {
+            var n = Math.max(0, Math.min(255, Math.round(component * 255)))
+            return ("0" + n.toString(16)).slice(-2)
+        }
+        return "#" + channel(colorValue.r) + channel(colorValue.g) + channel(colorValue.b)
+    }
     property bool isPlaying: false
     property bool apiConnected: false
     property string idleText: "♪ Music Lyrics"
@@ -75,8 +96,12 @@ MouseArea {
 
             textFormat: karaokeMarkup.length > 0 && currentLyric.length > 0
                         ? Text.RichText : Text.PlainText
+            // Rich text has its own HTML color rules. Wrap the entire line in
+            // the actual panel text color; word spans override only as needed.
             text: textFormat === Text.RichText
-                ? (showSourceLabel ? "<b>" + sourceLabel + "</b>&nbsp; " : "") + karaokeMarkup
+                ? '<span style="color:' + compactRoot.htmlHex(compactRoot.resolvedTextColor) + ';">'
+                    + (showSourceLabel ? "<b>" + sourceLabel + "</b>&nbsp; " : "")
+                    + karaokeMarkup + '</span>'
                 : displayText
             elide: Text.ElideRight
             maximumLineCount: 1
@@ -85,7 +110,7 @@ MouseArea {
             font.family: fontFamily.length > 0 ? fontFamily : Kirigami.Theme.defaultFont.family
             font.bold: fontBold
             font.italic: fontItalic
-            color: useCustomColor ? fontColor : Kirigami.Theme.textColor
+            color: compactRoot.resolvedTextColor
             opacity: 1
         }
     }

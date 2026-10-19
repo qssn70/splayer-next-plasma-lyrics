@@ -36,8 +36,6 @@ PlasmoidItem {
         lxApiPort: root.lxApiPort
         useWebSocket: root.useWebSocket
         lyricMode: root.lyricMode
-        useCustomColor: root.useCustomColor
-        fontColor: root.fontColor
     }
     PlayerBridge {
         id: lxmusic
@@ -47,8 +45,6 @@ PlasmoidItem {
         lxApiPort: root.lxApiPort
         useWebSocket: false
         lyricMode: root.lyricMode
-        useCustomColor: root.useCustomColor
-        fontColor: root.fontColor
     }
 
     // Active-playing status wins. Two playing players get two lyrics slots.
@@ -79,7 +75,10 @@ PlasmoidItem {
             id: splayerLine
             apiConnected: root.showSplayer
             currentLyric: splayer.currentLyric
-            karaokeMarkup: splayer.karaokeMarkup
+            lyricLine: splayer.currentLineIndex >= 0
+                ? splayer.lyricLines[splayer.currentLineIndex] : null
+            lyricTimeMs: splayer.currentTimeMs + splayer.lyricOffsetMs
+            lyricMode: root.lyricMode
             songTitle: splayer.songTitle
             songArtist: splayer.songArtist
             isPlaying: splayer.isPlaying
@@ -110,7 +109,10 @@ PlasmoidItem {
             id: lxLine
             apiConnected: root.showLX
             currentLyric: lxmusic.currentLyric
-            karaokeMarkup: lxmusic.karaokeMarkup
+            lyricLine: lxmusic.currentLineIndex >= 0
+                ? lxmusic.lyricLines[lxmusic.currentLineIndex] : null
+            lyricTimeMs: lxmusic.currentTimeMs + lxmusic.lyricOffsetMs
+            lyricMode: root.lyricMode
             songTitle: lxmusic.songTitle
             songArtist: lxmusic.songArtist
             isPlaying: lxmusic.isPlaying
